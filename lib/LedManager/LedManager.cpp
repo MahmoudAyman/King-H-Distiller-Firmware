@@ -7,9 +7,12 @@ LedManager::LedManager() {
 }
 
 void LedManager::begin() {
-    Serial.println("LedManager: Initializing FastLED...");
+    Serial.println("LedManager: Initializing FastLED (144 LEDs)...");
     FastLED.addLeds<WS2812B, LED_PIN, RGB>(leds, NUM_LEDS);
-    FastLED.setBrightness(150);
+    
+    FastLED.setBrightness(25); 
+    Serial.println("LedManager: Safety Brightness set to 10%");
+    
     FastLED.clear(true);
     FastLED.show();
     updateTicker();
@@ -35,14 +38,16 @@ float LedManager::getSpeed() {
 }
 
 void LedManager::setBrightness(uint8_t b) {
+    // b is expected 0-100 from BLE, map it or use directly if 0-255
     FastLED.setBrightness(b);
     FastLED.show();
 }
 
 void LedManager::togglePower() {
     bool isOn = FastLED.getBrightness() > 0;
-    setBrightness(isOn ? 0 : 150);
-    Serial.printf("LedManager: Power: %s\n", isOn ? "OFF" : "ON");
+    // Toggle between 0 and 10% (25)
+    setBrightness(isOn ? 0 : 25);
+    Serial.printf("LedManager: Power: %s (at 10%%)\n", isOn ? "OFF" : "ON");
 }
 
 void LedManager::updateTicker() {
@@ -78,7 +83,6 @@ void LedManager::runCurrentMode() {
     }
 }
 
-// Private Animation Methods
 void LedManager::solidPulse() { 
     fill_solid(leds, NUM_LEDS, baseColor); 
     FastLED.show(); 
