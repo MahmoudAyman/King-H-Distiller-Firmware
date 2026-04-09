@@ -4,8 +4,12 @@
 #include <Arduino.h>
 
 // =====================   FEATURE TOGGLES  =============
-#define USE_SD_CARD true   // Set to true to enable SD Card hardware
+#define USE_SD_CARD true   
 #define DEBUG_INPUT true   
+
+// =====================   SAFETY LIMITS  ===============
+#define MAX_VOLUME_LIMIT 0.5f  // Capped at 50% to limit current draw
+#define INITIAL_BRIGHTNESS 25  // 10% brightness limit
 
 // =====================   PIN MAP  =====================
 #define ENCODER_CLK 32
