@@ -3,6 +3,10 @@
 
 #include <Arduino.h>
 
+// =====================   FEATURE TOGGLES  =============
+#define USE_SD_CARD true   // Set to true to enable SD Card hardware
+#define DEBUG_INPUT true   
+
 // =====================   PIN MAP  =====================
 #define ENCODER_CLK 32
 #define ENCODER_DT 33
@@ -28,8 +32,8 @@
 #define CHAR2_UUID "e3223119-9445-4e96-a4a1-85358c4046a2"
 
 // =====================  TIMING CONSTANTS  =============
-#define DC_DELAY 400       // ms for double click
-#define DBL_DELAY 400      // ms for encoder double click
+#define DC_DELAY 500       
+#define DBL_DELAY 400      
 #define DC_DELAY_SPEED 400
 #define SD_RETRY_COOLDOWN 2000
 
