@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include <Ticker.h>
 #include <FastLED.h>
@@ -69,12 +68,15 @@ BLECharacteristic* pCharacteristic = NULL;
 BLECharacteristic* pCharacteristic_2 = NULL;
 bool deviceConnected = false;
 
+// Forward Declarations
 void updateAnimationSpeed(float newSpeed);
 void runCurrentMode();
 void sendDataBle(String message);
 void sendLightMessage(float value);
 void sendSpeedMessage(float value);
 void sendEffectMessage(int effect);
+void initBTmode();
+void initSDmode();
 
 size_t walkDir(const char* folder, std::vector<String>& list, bool recurse = true) {
   if (!USE_SD_CARD) return 0;
@@ -151,9 +153,9 @@ class MyServerCallbacks : public BLEServerCallbacks {
 
 class CharacteristicCallBack : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pChar) override {
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     deserializeJson(doc, pChar->getValue().c_str());
-    String cmdStr = doc["cmd"];
+    String cmdStr = doc["cmd"] | "";
     CommandType cmd = parseCommandType(cmdStr);
     switch (cmd) {
       case CMD_LIGHT:
@@ -163,7 +165,7 @@ class CharacteristicCallBack : public BLECharacteristicCallbacks {
         updateAnimationSpeed((float)doc["value"]);
         break;
       case CMD_EFFECT:
-        currentMode = parseEffectType(doc["value"]);
+        currentMode = parseEffectType(doc["value"] | "");
         break;
       default: break;
     }
@@ -278,7 +280,7 @@ void volTap(const uint8_t* d, uint32_t len) {
 void commonHardware() {
   pinMode(ENCODER_CLK, INPUT_PULLUP);
   pinMode(ENCODER_DT, INPUT_PULLUP);
-  pinMode(ENCODER_SW, INPUT_PULLUP); // Ensured pullup for encoder switch
+  pinMode(ENCODER_SW, INPUT_PULLUP); 
   pinMode(BTN_LED_MODE, INPUT_PULLUP);
   pinMode(BTN_LED_SPEED, INPUT_PULLUP);
   pinMode(BTN_TOGGLE, INPUT_PULLUP);
@@ -293,18 +295,39 @@ void commonHardware() {
 }
 
 void initSDmode() {
-  if (USE_SD_CARD && SD_MMC.begin() && SD_MMC.cardType() != CARD_NONE) {
+  Serial.println("[Main] Initializing SD_MMC...");
+  if (USE_SD_CARD && SD_MMC.begin()) {
+    uint8_t cardType = SD_MMC.cardType();
+    if(cardType == CARD_NONE){
+        Serial.println("[Main] Error: No SD card attached");
+        activeMode = MODE_BT;
+        initBTmode();
+        return;
+    }
+    Serial.printf("[Main] SD Card Type: %d\n", cardType);
+    uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+    Serial.printf("[Main] SD Card Size: %lluMB\n", cardSize);
+
     sdPlayer.setOutput(rmsStream);
     sdPlayer.setVolume(GVolume);
     sdOK = sdPlayer.begin();
-    if (sdOK) { sdPlayer.setIndex(0); sdPlayer.play(); }
+    if (sdOK) { 
+        size_t count = buildMp3List(mp3Files);
+        Serial.printf("[Main] SD Player initialized. Found %d MP3 files.\n", count);
+        sdPlayer.setIndex(0); 
+        sdPlayer.play(); 
+    } else {
+        Serial.println("[Main] Failed to start SD Player logic.");
+    }
   } else {
-    Serial.println("[Main] SD Card hardware unavailable. Staying in fallback mode.");
-    activeMode = MODE_SD; // Keep tracking current mode but player won't play
+    Serial.println("[Main] SD_MMC mount failed. Fallback to BT.");
+    activeMode = MODE_BT;
+    initBTmode();
   }
 }
 
 void initBTmode() {
+  Serial.println("[Main] Initializing Bluetooth A2DP...");
   a2dp_sink.set_auto_reconnect(true);
   a2dp_sink.set_stream_reader(volTap, true);
   a2dp_sink.start("KingH Music Player", true);
@@ -338,7 +361,6 @@ void handleToggleBtn() {
     }
   }
 
-  // Handle single click logic for turning lights on/off if double click fails
   if (waiting2nd && (millis() - lastClick > DC_DELAY)) {
     waiting2nd = false;
     bool newState = FastLED.getBrightness() == 0;
@@ -351,9 +373,33 @@ void handleToggleBtn() {
 }
 
 void sendDataBle(String message) { if (deviceConnected) { pCharacteristic->setValue(message.c_str()); pCharacteristic->notify(); } }
-void sendLightMessage(float v) { StaticJsonDocument<64> d; d["cmd"]="LIGHT"; d["value"]=v; String s; serializeJson(d,s); sendDataBle(s); }
-void sendSpeedMessage(float v) { StaticJsonDocument<64> d; d["cmd"]="SPEED"; d["value"]=v; String s; serializeJson(d,s); sendDataBle(s); }
-void sendEffectMessage(int e) { StaticJsonDocument<64> d; d["cmd"]="EFFECT"; d["value"]=e; String s; serializeJson(d,s); sendDataBle(s); }
+
+void sendLightMessage(float v) { 
+  JsonDocument d; 
+  d["cmd"] = "LIGHT"; 
+  d["value"] = v; 
+  String s; 
+  serializeJson(d, s); 
+  sendDataBle(s); 
+}
+
+void sendSpeedMessage(float v) { 
+  JsonDocument d; 
+  d["cmd"] = "SPEED"; 
+  d["value"] = v; 
+  String s; 
+  serializeJson(d, s); 
+  sendDataBle(s); 
+}
+
+void sendEffectMessage(int e) { 
+  JsonDocument d; 
+  d["cmd"] = "EFFECT"; 
+  d["value"] = e; 
+  String s; 
+  serializeJson(d, s); 
+  sendDataBle(s); 
+}
 
 void updateAnimationSpeed(float newSpeed) {
   animationSpeed = newSpeed;
@@ -365,7 +411,7 @@ void updateAnimationSpeed(float newSpeed) {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n[Main] Test Starting...");
+  Serial.println("\n[Main] TEST Starting...");
 
   systemMgr.begin();
   activeMode = systemMgr.getActiveMode();
@@ -387,12 +433,10 @@ void loop() {
   handleExtraButtons();
 
   if (USE_SD_CARD && activeMode == MODE_SD && sdOK && !sdPaused) {
-    if (SD_MMC.cardType() != CARD_NONE) {
-      bool playing = sdPlayer.copy();
-      if (!playing && !plused) {
+    bool playing = sdPlayer.copy();
+    if (!playing && !plused) {
         if (++currentSongIndex >= buildMp3List(mp3Files)) { currentSongIndex = 1; sdPlayer.setIndex(0); }
         sdPlayer.play(); plused = true;
-      } else if (playing) plused = false;
-    }
+    } else if (playing) plused = false;
   }
 }
