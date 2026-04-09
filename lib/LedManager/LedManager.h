@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <FastLED.h>
 #include <Ticker.h>
-#include "Config.h"
+#include "../../include/Config.h"
 
 class LedManager {
 private:
