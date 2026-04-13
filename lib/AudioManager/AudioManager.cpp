@@ -1,9 +1,3 @@
-/**
- * File: src/AudioManager.cpp
- * Project: King-H Distiller Firmware
- * Description: Implementation for AudioManager with corrected copier logic
- */
-
 #include "AudioManager.h"
 
 void (*AudioManager::audioLevelCallback)(int) = nullptr;
@@ -34,32 +28,24 @@ AudioManager::AudioManager() : sdSource("/", "mp3") {
 
 void AudioManager::begin(uint8_t mode) {
     currentMode = mode;
-    Serial.println("AudioManager: Initializing I2S for UDA1334...");
+    Serial.printf("AudioManager: Initializing in %s mode...\n", (mode == MODE_BT ? "Bluetooth" : "SD"));
 
     auto cfg = i2s.defaultConfig(TX_MODE);
     cfg.pin_bck = I2S_BCLK;
     cfg.pin_ws = I2S_LRCK;
     cfg.pin_data = I2S_DOUT;
-    cfg.sample_rate = 44100;
-    cfg.bits_per_sample = 16;
-    cfg.i2s_format = I2S_STD_FORMAT; 
-    cfg.buffer_size = 512;
-
-    if (!i2s.begin(cfg)) {
-        Serial.println("AudioManager: I2S Start Failed");
-        return;
-    }
+    i2s.begin(cfg);
 
     rms = new RMSStream(i2s, globalVolume, audioLevelCallback);
-    setVolume(0.03f);
 
     if (mode == MODE_SD) {
         if (USE_SD_CARD && SD_MMC.begin()) {
             if (SD_MMC.cardType() != CARD_NONE) {
                 sdPlayer->setOutput(*rms);
-                sdPlayer->setVolume(globalVolume);
+                setVolume(globalVolume); // Ensure safety cap is applied
                 if (sdPlayer->begin()) {
-                    walkDir("/", true);
+                    size_t count = walkDir("/", true);
+                    Serial.printf("AudioManager: SD Found %d MP3 files.\n", (int)count);
                     sdPlayer->setIndex(0);
                     sdPlayer->play();
                 }
@@ -69,29 +55,11 @@ void AudioManager::begin(uint8_t mode) {
         a2dp_sink->set_auto_reconnect(true);
         a2dp_sink->set_stream_reader(btDataCallback, true);
         a2dp_sink->start("KingH Music Player", true);
+        setVolume(globalVolume); // Ensure safety cap is applied
     }
-}
-
-void AudioManager::startBeepTest() {
-    Serial.println("AudioManager: Beep Test Starting...");
-    isTestMode = true;
-    
-    // Correct SineWave Setup for recent AudioTools
-    auto info = i2s.info();
-    sineWave.begin(info, 440); // 440Hz
-    copier.begin(i2s, sineWave);
-}
-
-void AudioManager::stopBeepTest() {
-    isTestMode = false;
 }
 
 void AudioManager::update() {
-    if (isTestMode) {
-        copier.copy();
-        return;
-    }
-
     if (currentMode == MODE_SD && !sdPaused) {
         bool playing = sdPlayer->copy();
         if (!playing && !isPlayingNext) {
@@ -108,31 +76,44 @@ void AudioManager::update() {
 }
 
 void AudioManager::setVolume(float vol) {
+    // Apply safety cap defined in Config.h
     globalVolume = constrain(vol, 0.0f, MAX_VOLUME_LIMIT);
+    
     if (currentMode == MODE_SD) {
         sdPlayer->setVolume(globalVolume);
     } else {
         a2dp_sink->set_volume(globalVolume * 100);
     }
+    Serial.printf("AudioManager: Volume set to %.2f (Cap: %.2f)\n", globalVolume, MAX_VOLUME_LIMIT);
 }
 
-float AudioManager::getVolume() { return globalVolume; }
+float AudioManager::getVolume() {
+    return globalVolume;
+}
 
 void AudioManager::next() {
+    Serial.println("AudioManager: Next Track");
     if (currentMode == MODE_SD) {
         if (mp3Files.size() > 0) {
             if (++currentSongIndex >= mp3Files.size()) currentSongIndex = 0;
             sdPlayer->setIndex(currentSongIndex);
             sdPlayer->play();
         }
-    } else a2dp_sink->next();
+    } else {
+        a2dp_sink->next();
+    }
 }
 
 void AudioManager::togglePause() {
-    if (currentMode == MODE_SD) sdPaused = !sdPaused;
-    else {
-        if (a2dp_sink->get_audio_state() == ESP_A2D_AUDIO_STATE_STARTED) a2dp_sink->pause();
-        else a2dp_sink->play();
+    if (currentMode == MODE_SD) {
+        sdPaused = !sdPaused;
+        Serial.printf("AudioManager: SD %s\n", sdPaused ? "Paused" : "Resumed");
+    } else {
+        if (a2dp_sink->get_audio_state() == ESP_A2D_AUDIO_STATE_STARTED) {
+            a2dp_sink->pause();
+        } else {
+            a2dp_sink->play();
+        }
     }
 }
 
