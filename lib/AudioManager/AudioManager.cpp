@@ -199,7 +199,7 @@ void AudioManager::begin(uint8_t mode) {
     rms = new RMSStream(out, globalVolume, audioLevelCallback);
 
     if (mode == MODE_SD) {
-        if (USE_SD_CARD && SD_MMC.begin()) {
+        if (USE_SD_CARD && SD_MMC.begin("/sdcard", true)) {
             if (SD_MMC.cardType() != CARD_NONE) {
                 // Route SD Player through RMS visualization to Analog out
                 sdPlayer->setOutput(*rms);
