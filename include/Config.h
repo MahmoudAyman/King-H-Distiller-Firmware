@@ -8,7 +8,7 @@
 #define DEBUG_INPUT true   
 
 // =====================   SAFETY LIMITS  ===============
-#define MAX_VOLUME_LIMIT 0.6f  // Capped at 50% to limit current draw
+#define MAX_VOLUME_LIMIT 0.8f  // Capped at 50% to limit current draw
 #define INITIAL_BRIGHTNESS 25  // 10% brightness limit
 
 // =====================   PIN MAP  =====================
@@ -22,9 +22,12 @@
 #define NUM_LEDS 144
 
 // I²S pins
-#define I2S_BCLK 19
-#define I2S_LRCK 25
-#define I2S_DOUT 26
+// #define I2S_BCLK 19
+// #define I2S_LRCK 25
+// #define I2S_DOUT 26
+#define I2S_BCLK 27
+#define I2S_LRCK 18
+#define I2S_DOUT 23
 
 // =====================  MODE DEFINITIONS  =============
 #define MODE_SD 0

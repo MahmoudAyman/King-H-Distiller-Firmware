@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <Ticker.h>
 #include <RotaryEncoder.h>
-
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -21,9 +20,9 @@ AudioManager audioMgr;
 uint8_t activeMode; 
 RotaryEncoder encoder(ENCODER_CLK, ENCODER_DT, RotaryEncoder::LatchMode::TWO03);
 
-BLEServer* pServer = NULL;
-BLECharacteristic* pCharacteristic = NULL;
-BLECharacteristic* pCharacteristic_2 = NULL;
+BLEServer* pServer = nullptr;
+BLECharacteristic* pCharacteristic = nullptr;
+BLECharacteristic* pCharacteristic_2 = nullptr;
 bool deviceConnected = false;
 
 // Forward declarations
@@ -32,9 +31,7 @@ void sendLightMessage(float value);
 void sendSpeedMessage(float value);
 void sendDataBle(String message);
 
-void handleAudioLevel(int level) {
-    ledMgr.runMusicSync(level);
-}
+void handleAudioLevel(int level) { ledMgr.runMusicSync(level); }
 
 CommandType parseCommandType(const String& cmd) {
     if (cmd == "LIGHT") return CMD_LIGHT;
@@ -58,7 +55,9 @@ EffectType parseEffectType(const String& value) {
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         deviceConnected = true;
+        // Re-synced only existing getters from LedManager
         sendEffectMessage((int)ledMgr.getEffect());
+        sendSpeedMessage(ledMgr.getSpeed());
     }
     void onDisconnect(BLEServer* pServer) override {
         deviceConnected = false;
@@ -73,8 +72,8 @@ class CharacteristicCallBack : public BLECharacteristicCallbacks {
         String cmdStr = doc["cmd"] | "";
         CommandType cmd = parseCommandType(cmdStr);
         switch (cmd) {
-            case CMD_LIGHT: ledMgr.setBrightness((float)doc["value"] * 100); break;
-            case CMD_SPEED: ledMgr.setSpeed((float)doc["value"]); break;
+            case CMD_LIGHT: ledMgr.setBrightness((uint8_t)(doc["value"].as<float>() * 255.0f)); break;
+            case CMD_SPEED: ledMgr.setSpeed(doc["value"].as<float>()); break;
             case CMD_EFFECT: ledMgr.setEffect(parseEffectType(doc["value"] | "")); break;
             default: break;
         }
@@ -83,124 +82,100 @@ class CharacteristicCallBack : public BLECharacteristicCallbacks {
 
 void tickEncoder() { encoder.tick(); }
 
-void handleEncoderRotation() {
-    static int lastPos = encoder.getPosition();
+void handleInputs() {
+    // Volume Control via Encoder
+    static int lastPos = 0;
     int pos = encoder.getPosition();
     if (pos != lastPos) {
-        int diff = pos - lastPos;
-        float currentVol = audioMgr.getVolume();
-        audioMgr.setVolume(currentVol - (diff / 100.0f));
+        float vol = audioMgr.getVolume();
+        vol += (pos > lastPos) ? 0.02f : -0.02f;
+        audioMgr.setVolume(vol);
         lastPos = pos;
     }
-}
 
-void handleEncoderButton() {
+    // Encoder Button Logic
     static bool lastEncBtn = HIGH;
     static uint32_t lastPressTime = 0;
     static bool waitingForDouble = false;
-    
     bool reading = digitalRead(ENCODER_SW);
     if (reading == LOW && lastEncBtn == HIGH) {
         if (waitingForDouble && (millis() - lastPressTime < DBL_DELAY)) {
             waitingForDouble = false;
             audioMgr.next();
-        } else {
-            waitingForDouble = true;
-            lastPressTime = millis();
-        }
+        } else { waitingForDouble = true; lastPressTime = millis(); }
+        delay(50); 
     }
     if (waitingForDouble && (millis() - lastPressTime > DBL_DELAY)) {
         waitingForDouble = false;
         audioMgr.togglePause();
     }
     lastEncBtn = reading;
-}
 
-void handleExtraButtons() {
-    static bool lastBtnMode = HIGH;
-    static bool lastBtnSpeed = HIGH;
-    
-    bool btnMode = digitalRead(BTN_LED_MODE);
-    bool btnSpeed = digitalRead(BTN_LED_SPEED);
-
+    // Mode & Speed Buttons
+    static bool lastBtnMode = HIGH, lastBtnSpeed = HIGH;
+    bool btnMode = digitalRead(BTN_LED_MODE), btnSpeed = digitalRead(BTN_LED_SPEED);
     if (btnMode == LOW && lastBtnMode == HIGH) {
         int nextMode = ((int)ledMgr.getEffect() + 1) % 8;
         ledMgr.setEffect((EffectType)nextMode);
+        sendEffectMessage(nextMode);
+        delay(50);
     }
     if (btnSpeed == LOW && lastBtnSpeed == HIGH) {
         float currentSpd = ledMgr.getSpeed();
-        currentSpd -= 0.3f; if (currentSpd <= 0) currentSpd = 1.0f;
+        currentSpd -= 0.2f; if (currentSpd <= 0) currentSpd = 1.0f;
         ledMgr.setSpeed(currentSpd);
+        sendSpeedMessage(currentSpd);
+        delay(50);
     }
-    lastBtnMode = btnMode;
-    lastBtnSpeed = btnSpeed;
-}
+    lastBtnMode = btnMode; lastBtnSpeed = btnSpeed;
 
-void handleToggleBtn() {
-    static bool lastBtnOn = HIGH;
-    static uint32_t lastClick = 0;
-    static bool waiting2nd = false;
-    
-    bool reading = digitalRead(BTN_TOGGLE);
-    if (reading == LOW && lastBtnOn == HIGH) {
+    // Toggle Button Logic
+    static bool lastBtnOn = HIGH; static uint32_t lastClick = 0; static bool waiting2nd = false;
+    bool tglReading = digitalRead(BTN_TOGGLE);
+    if (tglReading == LOW && lastBtnOn == HIGH) {
         if (waiting2nd && (millis() - lastClick < DC_DELAY)) {
             waiting2nd = false;
             systemMgr.storeModeAndReboot((activeMode == MODE_SD) ? MODE_BT : MODE_SD);
-        } else {
-            waiting2nd = true;
-            lastClick = millis();
-        }
+        } else { waiting2nd = true; lastClick = millis(); }
+        delay(50);
     }
     if (waiting2nd && (millis() - lastClick > DC_DELAY)) {
         waiting2nd = false;
         ledMgr.togglePower();
     }
-    lastBtnOn = reading;
+    lastBtnOn = tglReading;
 }
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
-    
     systemMgr.begin();
     activeMode = systemMgr.getActiveMode();
-
     pinMode(ENCODER_CLK, INPUT_PULLUP);
     pinMode(ENCODER_DT, INPUT_PULLUP);
     pinMode(ENCODER_SW, INPUT_PULLUP); 
     pinMode(BTN_LED_MODE, INPUT_PULLUP);
     pinMode(BTN_LED_SPEED, INPUT_PULLUP);
     pinMode(BTN_TOGGLE, INPUT_PULLUP);
-
     encTicker.attach_ms(1, tickEncoder);
-    
     ledMgr.begin();
     audioMgr.setAudioLevelCallback(handleAudioLevel);
     audioMgr.begin(activeMode);
-
-    BLEDevice::init("KingH Music Player");
+    BLEDevice::init("KingH Distiller");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
     BLEService* pService = pServer->createService(SERVICE_UUID);
     pCharacteristic = pService->createCharacteristic(CHAR1_UUID, BLECharacteristic::PROPERTY_NOTIFY);
-    pCharacteristic_2 = pService->createCharacteristic(CHAR2_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
     pCharacteristic->addDescriptor(new BLE2902());
+    pCharacteristic_2 = pService->createCharacteristic(CHAR2_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
     pCharacteristic_2->setCallbacks(new CharacteristicCallBack());
     pService->start();
     BLEDevice::getAdvertising()->start();
-
-    Serial.println("[Main] Ready.");
+    systemMgr.logDiagnostics();
 }
 
-void loop() {
-    audioMgr.update();
-    handleToggleBtn();
-    handleEncoderRotation();
-    handleEncoderButton();
-    handleExtraButtons();
-}
+void loop() { audioMgr.update(); handleInputs(); }
 
-void sendDataBle(String message) { if (deviceConnected) { pCharacteristic->setValue(message.c_str()); pCharacteristic->notify(); } }
-void sendLightMessage(float v) { JsonDocument d; d["cmd"]="LIGHT"; d["value"]=v; String s; serializeJson(d,s); sendDataBle(s); }
-void sendSpeedMessage(float v) { JsonDocument d; d["cmd"]="SPEED"; d["value"]=v; String s; serializeJson(d,s); sendDataBle(s); }
-void sendEffectMessage(int e) { JsonDocument d; d["cmd"]="EFFECT"; d["value"]=e; String s; serializeJson(d,s); sendDataBle(s); }
+void sendDataBle(String message) { if (deviceConnected && pCharacteristic) { pCharacteristic->setValue(message.c_str()); pCharacteristic->notify(); } }
+void sendLightMessage(float value) { JsonDocument d; d["cmd"] = "LIGHT"; d["value"] = value; String s; serializeJson(d, s); sendDataBle(s); }
+void sendSpeedMessage(float value) { JsonDocument d; d["cmd"] = "SPEED"; d["value"] = value; String s; serializeJson(d, s); sendDataBle(s); }
+void sendEffectMessage(int effect) { JsonDocument d; d["cmd"] = "EFFECT"; d["value"] = effect; String s; serializeJson(d, s); sendDataBle(s); }
