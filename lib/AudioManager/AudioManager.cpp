@@ -1,5 +1,6 @@
 #include "AudioManager.h"
 
+AudioManager* AudioManager::instance = nullptr;
 void (*AudioManager::audioLevelCallback)(int) = nullptr;
 
 class RMSStream : public AudioStream {
@@ -27,6 +28,7 @@ static RMSStream* rmsWrapper = nullptr;
 AudioManager::AudioManager() : sdSource("/", "mp3") {
     sdPlayer = new AudioPlayer(sdSource, i2s, mp3dec);
     a2dp_sink = new BluetoothA2DPSink(i2s);
+    instance = this;
 }
 
 void AudioManager::begin(uint8_t mode) {
@@ -59,6 +61,7 @@ void AudioManager::begin(uint8_t mode) {
     } else {
         a2dp_sink->set_auto_reconnect(true);
         a2dp_sink->set_stream_reader(btDataCallback, true);
+        a2dp_sink->set_on_volumechange(btVolumeCallback);
         a2dp_sink->start("KingH Music Player");
         setVolume(globalVolume);
     }
@@ -124,4 +127,15 @@ void AudioManager::btDataCallback(const uint8_t* data, uint32_t len) {
     size_t count = len / 2;
     for (size_t i = 0; i < count; i++) sum += abs(samples[i]);
     if (count > 0 && audioLevelCallback) audioLevelCallback(sum / count);
+}
+
+void AudioManager::btVolumeCallback(int volume) {
+    if (instance) {
+        float vol = (float)volume / 127.0f;
+        if (vol > MAX_VOLUME_LIMIT) {
+            vol = MAX_VOLUME_LIMIT;
+            instance->a2dp_sink->set_volume(MAX_VOLUME_LIMIT * 127);
+        }
+        instance->globalVolume = vol;
+    }
 }

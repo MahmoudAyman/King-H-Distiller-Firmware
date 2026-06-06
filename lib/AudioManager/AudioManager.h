@@ -35,8 +35,10 @@ private:
     int currentSongIndex = 0;
     std::vector<String> mp3Files;
 
+    static AudioManager* instance;
     static void (*audioLevelCallback)(int);
     static void btDataCallback(const uint8_t* data, uint32_t len);
+    static void btVolumeCallback(int volume);
     size_t walkDir(const char* folder, bool recurse);
 };
 

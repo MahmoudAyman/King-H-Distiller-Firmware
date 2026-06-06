@@ -10,8 +10,8 @@ void LedManager::begin() {
     Serial.println("LedManager: Initializing FastLED (144 LEDs)...");
     FastLED.addLeds<WS2812B, LED_PIN, RGB>(leds, NUM_LEDS);
     
-    FastLED.setBrightness(25); 
-    Serial.println("LedManager: Safety Brightness set to 10%");
+    FastLED.setBrightness(12); 
+    Serial.println("LedManager: Safety Brightness set to 5%");
     
     FastLED.clear(true);
     FastLED.show();

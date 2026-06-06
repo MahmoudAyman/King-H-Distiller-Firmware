@@ -88,7 +88,7 @@ void handleInputs() {
     int pos = encoder.getPosition();
     if (pos != lastPos) {
         float vol = audioMgr.getVolume();
-        vol += (pos > lastPos) ? 0.02f : -0.02f;
+        vol += (pos > lastPos) ? -0.02f : 0.02f;
         audioMgr.setVolume(vol);
         lastPos = pos;
     }
@@ -157,7 +157,7 @@ void setup() {
     pinMode(BTN_LED_SPEED, INPUT_PULLUP);
     pinMode(BTN_TOGGLE, INPUT_PULLUP);
     encTicker.attach_ms(1, tickEncoder);
-    ledMgr.begin();
+    delay(1000);
     audioMgr.setAudioLevelCallback(handleAudioLevel);
     audioMgr.begin(activeMode);
     BLEDevice::init("KingH Distiller");
@@ -171,6 +171,10 @@ void setup() {
     pService->start();
     BLEDevice::getAdvertising()->start();
     systemMgr.logDiagnostics();
+
+    delay(2000);
+    ledMgr.begin();
+    delay(1000);
 }
 
 void loop() { audioMgr.update(); handleInputs(); }

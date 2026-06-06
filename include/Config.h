@@ -15,8 +15,8 @@
 #define ENCODER_CLK 32
 #define ENCODER_DT 33
 #define ENCODER_SW 35
-#define BTN_LED_MODE 5
-#define BTN_LED_SPEED 22
+#define BTN_LED_MODE 22
+#define BTN_LED_SPEED 5
 #define BTN_TOGGLE 21  
 #define LED_PIN 17
 #define NUM_LEDS 144
