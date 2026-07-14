@@ -8,7 +8,7 @@
 #define DEBUG_INPUT true   
 
 // =====================   SAFETY LIMITS  ===============
-#define MAX_VOLUME_LIMIT 0.8f  // Capped at 50% to limit current draw
+#define MAX_VOLUME_LIMIT 1.0f  // Allowed up to 100% volume
 #define INITIAL_BRIGHTNESS 25  // 10% brightness limit
 
 // =====================   PIN MAP  =====================

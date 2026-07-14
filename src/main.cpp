@@ -80,6 +80,43 @@ class CharacteristicCallBack : public BLECharacteristicCallbacks {
     }
 };
 
+struct DebounceButton {
+    uint8_t pin;
+    bool lastRawState;
+    bool stableState;
+    uint32_t lastDebounceTime;
+    uint32_t debounceDelay;
+
+    DebounceButton(uint8_t p, uint32_t delayMs = 50) {
+        pin = p;
+        lastRawState = HIGH;
+        stableState = HIGH;
+        lastDebounceTime = 0;
+        debounceDelay = delayMs;
+    }
+
+    bool update() {
+        bool reading = digitalRead(pin);
+        bool pressed = false;
+
+        if (reading != lastRawState) {
+            lastDebounceTime = millis();
+        }
+
+        if ((millis() - lastDebounceTime) > debounceDelay) {
+            if (reading != stableState) {
+                stableState = reading;
+                if (stableState == LOW) {
+                    pressed = true;
+                }
+            }
+        }
+
+        lastRawState = reading;
+        return pressed;
+    }
+};
+
 void tickEncoder() { encoder.tick(); }
 
 void handleInputs() {
@@ -93,57 +130,60 @@ void handleInputs() {
         lastPos = pos;
     }
 
-    // Encoder Button Logic
-    static bool lastEncBtn = HIGH;
+    // Debounced Buttons
+    static DebounceButton dbEncoderBtn(ENCODER_SW, 50);
+    static DebounceButton dbBtnMode(BTN_LED_MODE, 50);
+    static DebounceButton dbBtnSpeed(BTN_LED_SPEED, 50);
+    static DebounceButton dbBtnToggle(BTN_TOGGLE, 50);
+
+    // Encoder Button Logic (Play/Pause & Next)
     static uint32_t lastPressTime = 0;
     static bool waitingForDouble = false;
-    bool reading = digitalRead(ENCODER_SW);
-    if (reading == LOW && lastEncBtn == HIGH) {
+
+    if (dbEncoderBtn.update()) {
         if (waitingForDouble && (millis() - lastPressTime < DBL_DELAY)) {
             waitingForDouble = false;
             audioMgr.next();
-        } else { waitingForDouble = true; lastPressTime = millis(); }
-        delay(50); 
+        } else {
+            waitingForDouble = true;
+            lastPressTime = millis();
+        }
     }
     if (waitingForDouble && (millis() - lastPressTime > DBL_DELAY)) {
         waitingForDouble = false;
         audioMgr.togglePause();
     }
-    lastEncBtn = reading;
 
     // Mode & Speed Buttons
-    static bool lastBtnMode = HIGH, lastBtnSpeed = HIGH;
-    bool btnMode = digitalRead(BTN_LED_MODE), btnSpeed = digitalRead(BTN_LED_SPEED);
-    if (btnMode == LOW && lastBtnMode == HIGH) {
+    if (dbBtnMode.update()) {
         int nextMode = ((int)ledMgr.getEffect() + 1) % 8;
         ledMgr.setEffect((EffectType)nextMode);
         sendEffectMessage(nextMode);
-        delay(50);
     }
-    if (btnSpeed == LOW && lastBtnSpeed == HIGH) {
+    if (dbBtnSpeed.update()) {
         float currentSpd = ledMgr.getSpeed();
         currentSpd -= 0.2f; if (currentSpd <= 0) currentSpd = 1.0f;
         ledMgr.setSpeed(currentSpd);
         sendSpeedMessage(currentSpd);
-        delay(50);
     }
-    lastBtnMode = btnMode; lastBtnSpeed = btnSpeed;
 
-    // Toggle Button Logic
-    static bool lastBtnOn = HIGH; static uint32_t lastClick = 0; static bool waiting2nd = false;
-    bool tglReading = digitalRead(BTN_TOGGLE);
-    if (tglReading == LOW && lastBtnOn == HIGH) {
+    // Toggle Button Logic (Double Click to switch mode, Single Click to toggle power)
+    static uint32_t lastClick = 0;
+    static bool waiting2nd = false;
+
+    if (dbBtnToggle.update()) {
         if (waiting2nd && (millis() - lastClick < DC_DELAY)) {
             waiting2nd = false;
             systemMgr.storeModeAndReboot((activeMode == MODE_SD) ? MODE_BT : MODE_SD);
-        } else { waiting2nd = true; lastClick = millis(); }
-        delay(50);
+        } else {
+            waiting2nd = true;
+            lastClick = millis();
+        }
     }
     if (waiting2nd && (millis() - lastClick > DC_DELAY)) {
         waiting2nd = false;
         ledMgr.togglePower();
     }
-    lastBtnOn = tglReading;
 }
 
 void setup() {
